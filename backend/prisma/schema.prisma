@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                String            @id @default(cuid())
+  name              String
+  email             String            @unique
+  passwordHash      String
+  role              Role              @default(RESPONDER)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  assignedIncidents Incident[]        @relation("IncidentAssignedTo")
+  createdIncidents  Incident[]        @relation("IncidentCreatedBy")
+  comments          IncidentComment[]
+  events            IncidentEvent[]   @relation("EventUser")
+  notifications     Notification[]
+}
+
+model Incident {
+  id            String            @id @default(cuid())
+  title         String
+  description   String?
+  severity      IncidentSeverity  @default(SEV3)
+  status        IncidentStatus    @default(OPEN)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  resolvedAt    DateTime?
+  createdById   String
+  assignedToId  String?
+  assignedTo    User?             @relation("IncidentAssignedTo", fields: [assignedToId], references: [id])
+  createdBy     User              @relation("IncidentCreatedBy", fields: [createdById], references: [id])
+  comments      IncidentComment[]
+  events        IncidentEvent[]   @relation("IncidentEvents")
+  notifications Notification[]
+
+  @@index([status])
+  @@index([severity])
+  @@index([createdById])
+  @@index([assignedToId])
+}
+
+model IncidentComment {
+  id         String   @id @default(cuid())
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  incidentId String
+  userId     String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([incidentId])
+}
+
+model IncidentEvent {
+  id         String            @id @default(cuid())
+  type       IncidentEventType
+  message    String
+  createdAt  DateTime          @default(now())
+  incidentId String
+  userId     String?
+  incident   Incident          @relation("IncidentEvents", fields: [incidentId], references: [id], onDelete: Cascade)
+  user       User?             @relation("EventUser", fields: [userId], references: [id])
+
+  @@index([incidentId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  userId     String
+  incidentId String?
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incident Incident? @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([incidentId])
+}
+
+enum Role {
+  ADMIN
+  RESPONDER
+  VIEWER
+}
+
+enum IncidentSeverity {
+  SEV1
+  SEV2
+  SEV3
+  SEV4
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  MITIGATING
+  RESOLVING
+  RESOLVED
+}
+
+enum IncidentEventType {
+  CREATED
+  STATUS_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  COMMENT_ADDED
+  UPDATED
+  RESOLVED
+}
+
+enum NotificationType {
+  INCIDENT_ASSIGNED
+  INCIDENT_STATUS_CHANGED
+  INCIDENT_COMMENT_ADDED
+  INCIDENT_UPDATED
+}
