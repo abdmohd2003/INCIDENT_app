@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -68,7 +69,7 @@ export function Header({
               {displayName.slice(0, 1).toUpperCase()}
             </span>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          {/* <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <span className="block truncate">{displayName}</span>
               <span className="mt-1 block text-xs font-normal text-muted-foreground">
@@ -79,7 +80,24 @@ export function Header({
             <DropdownMenuItem onClick={logout} variant="destructive">
               <LogOut />Log out
             </DropdownMenuItem>
-          </DropdownMenuContent>
+          </DropdownMenuContent> */}
+          <DropdownMenuContent align="end" className="w-56">
+  <DropdownMenuGroup>
+    <DropdownMenuLabel>
+      <span className="block truncate">{displayName}</span>
+      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+        {user?.role ?? ""}
+      </span>
+    </DropdownMenuLabel>
+  </DropdownMenuGroup>
+
+  <DropdownMenuSeparator />
+
+  <DropdownMenuItem onClick={logout} variant="destructive">
+    <LogOut />
+    Log out
+  </DropdownMenuItem>
+</DropdownMenuContent>
         </DropdownMenu>
       </div>
     </header>
