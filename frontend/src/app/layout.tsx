@@ -5,6 +5,7 @@ import "./globals.css";
 
 import { Providers } from "@/components/providers";
 
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -13,7 +14,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
+       
         <Providers>{children}</Providers>
+        
       </body>
     </html>
   );

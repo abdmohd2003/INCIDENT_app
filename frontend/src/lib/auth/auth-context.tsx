@@ -19,6 +19,12 @@ import {
 } from "@/lib/auth/session";
 import { apiClient } from "@/lib/api/client";
 
+
+import {
+  connectSocket,
+  disconnectSocket,
+} from "@/lib/socket/socket-client";
+
 type LoginCredentials = {
   email: string;
   password: string;
