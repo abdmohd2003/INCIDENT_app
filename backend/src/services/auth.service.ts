@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { prisma } from "../lib/prisma.js";
 import { generateToken } from "../lib/jwt.js";
+import { HttpError } from "../lib/http-error.js";
 
 export const registerUser = async (
   name: string,
@@ -12,7 +13,7 @@ export const registerUser = async (
   });
 
   if (existingUser) {
-    throw new Error("User already exists");
+    throw new HttpError(409, "USER_ALREADY_EXISTS", "An account with this email already exists");
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -48,7 +49,7 @@ export const loginUser = async (
   });
 
   if (!user) {
-    throw new Error("Invalid email or password");
+    throw new HttpError(401, "INVALID_CREDENTIALS", "Invalid email or password");
   }
 
   const passwordMatch = await bcrypt.compare(
@@ -57,7 +58,7 @@ export const loginUser = async (
   );
 
   if (!passwordMatch) {
-    throw new Error("Invalid email or password");
+    throw new HttpError(401, "INVALID_CREDENTIALS", "Invalid email or password");
   }
 
   const token = generateToken(user.id, user.role);

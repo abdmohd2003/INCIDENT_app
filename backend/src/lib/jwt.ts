@@ -1,24 +1,19 @@
-import jwt from "jsonwebtoken";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+import { env } from "../config/env.js";
 
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET is not defined in env");
-}
-
-export const generateToken = (userId: string, role: string): string => {
-  return jwt.sign(
+export const generateToken = (userId: string, role: string): string =>
+  jwt.sign(
+    { userId, role },
+    env.JWT_SECRET,
     {
-      userId,
-      role,
-    },
-    JWT_SECRET,
-    {
+      algorithm: "HS256",
       expiresIn: "1h",
-    }
+    },
   );
-};
 
-export const verifyToken = (token: string) => {
-  return jwt.verify(token, JWT_SECRET);
-};
+export const verifyToken = (token: string): string | JwtPayload =>
+  jwt.verify(token, env.JWT_SECRET, {
+    algorithms: ["HS256"],
+    clockTolerance: 5,
+  });

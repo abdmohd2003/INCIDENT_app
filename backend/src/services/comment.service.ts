@@ -1,4 +1,6 @@
 import { prisma } from "../lib/prisma.js";
+import { publishIncidentCommentAdded } from "../realtime/publisher.js";
+import { HttpError } from "../lib/http-error.js";
 
 export const createComment = async(
     incidentId: string,
@@ -13,10 +15,10 @@ export const createComment = async(
     });
 
     if(!incident){
-        throw new Error("INCIDENT_NOT_FOUND");
+        throw new HttpError(404, "INCIDENT_NOT_FOUND", "Incident not found");
     }
 
-    return prisma.$transaction(async(tx)=>{
+    const comment = await prisma.$transaction(async(tx)=>{
         const comment = await tx.incidentComment.create({
             data:{
                 content,
@@ -46,6 +48,14 @@ export const createComment = async(
         });
         return comment;
     });
+
+    publishIncidentCommentAdded({
+        incidentId,
+        userId,
+        commentId: comment.id,
+    });
+
+    return comment;
 };
 
 export const getIncidentComments = async(

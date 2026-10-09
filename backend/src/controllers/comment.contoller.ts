@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import {
     createComment,
     getIncidentComments
@@ -6,40 +6,25 @@ import {
 
 export const addComment = async (
     req:Request,
-    res:Response
+    res:Response,
+    next: NextFunction,
 )=>{
     try{
         const {content} = req.body;
 
-        if (!content || !content.trim()){
-            return res.status(400).json({
-                message: "Comment content is required"
-            });
-        }
-
         const comment = await createComment(
             String(req.params.id),
             req.user!.id,
-            content.trim()
+            content,
         );
 
         return res.status(201).json({
             message:"comment added",
-
+            comment,
         });
 
-    }catch (error:any){
-        console.error(error);
-
-        if(error.message === "INCIDENT_NOT_FOUND"){
-            return res.status(404).json({
-                message:"Incident not found"
-            });
-        }
-
-        return res.status(500).json({
-            message:"Failed to add comment"
-        });
+    }catch (error){
+        next(error);
 
     }
 };
@@ -47,7 +32,8 @@ export const addComment = async (
 
 export const getComments = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ) => {
   try {
     const comments = await getIncidentComments(
@@ -58,10 +44,6 @@ export const getComments = async (
       comments,
     });
   } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
-      message: "Failed to fetch comments",
-    });
+    next(error);
   }
 };

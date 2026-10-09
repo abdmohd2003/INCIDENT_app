@@ -43,7 +43,7 @@ const STATUS_LABELS: Record<IncidentStatus, string> = {
 export default function IncidentDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useCan();
-  const canMutate = can(["ADMIN", "RESPONDER", "VIEWER"]);
+  const canMutate = can(["ADMIN", "RESPONDER"]);
   const { data: incident, isLoading, isError, error } = useIncident(id);
   const {
     data: commentsData,

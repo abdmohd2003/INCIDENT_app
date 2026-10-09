@@ -1,38 +1,41 @@
-import { Request, Response, NextFunction } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { verifyToken } from "../lib/jwt.js";
+import { HttpError } from "../lib/http-error.js";
+
+const roles = ["ADMIN", "RESPONDER", "VIEWER"] as const;
+type UserRole = (typeof roles)[number];
+const isUserRole = (role: string): role is UserRole =>
+  roles.some((allowedRole) => allowedRole === role);
 
 export const authenticate = (
   req: Request,
-  res: Response,
-  next: NextFunction
+  _res: Response,
+  next: NextFunction,
 ) => {
+  const authorization = req.headers.authorization;
+  if (!authorization?.startsWith("Bearer ")) {
+    return next(new HttpError(401, "AUTHENTICATION_REQUIRED", "Authentication required"));
+  }
+
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        message: "Authentication required",
-      });
-    }
-
-    const token = authHeader.split(" ")[1];
-    const decoded = verifyToken(token) as { userId?: string; role?: string };
-
-    if (!decoded || typeof decoded === "string" || !decoded.userId) {
-      return res.status(401).json({
-        message: "Invalid or expired token",
-      });
+    const decoded = verifyToken(authorization.slice("Bearer ".length));
+    if (
+      typeof decoded === "string" ||
+      typeof decoded.userId !== "string" ||
+      typeof decoded.role !== "string" ||
+      !isUserRole(decoded.role)
+    ) {
+      return next(new HttpError(401, "INVALID_TOKEN", "Invalid authentication token"));
     }
 
     req.user = {
       id: decoded.userId,
-      role: decoded.role ?? "RESPONDER",
+      role: decoded.role,
     };
-    console.log("Auth user:",req.user);
-    next();
+    return next();
   } catch {
-    return res.status(401).json({
-      message: "Invalid or expired token",
-    });
+    return next(
+      new HttpError(401, "INVALID_TOKEN", "Invalid or expired authentication token"),
+    );
   }
 };

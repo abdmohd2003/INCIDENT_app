@@ -1,7 +1,11 @@
 import { prisma } from "../lib/prisma.js";
 import { Prisma } from "@prisma/client";
 import { createNotification } from "./notification.service.js";
-
+import { enqueueNotificationEmail } from "../queues/notification.queue.js";
+import { publishIncidentAssigned, publishIncidentCreated, publishIncidentResolved, publishIncidentStatusChanged, publishIncidentUpdated } from "../realtime/publisher.js";
+import { isEmailDeliveryEnabled } from "./email.service.js";
+import { logger } from "../lib/logger.js";
+import { HttpError } from "../lib/http-error.js";
 
 type IncidentStatus =
   | "OPEN"
@@ -43,7 +47,7 @@ export const createIncident = async (
     severity?: IncidentSeverity;
   }
 ) => {
-  return prisma.$transaction(async (tx) => {
+  const incident = await prisma.$transaction(async (tx) => {
     const incident = await tx.incident.create({
       data: {
         title: data.title,
@@ -64,118 +68,11 @@ export const createIncident = async (
 
     return incident;
   });
+
+  publishIncidentCreated({ incidentId: incident.id, incident, userId });
+  return incident;
 };
 
-
-// GET ALL INCIDENTS
-// export const getIncidents = async () => {
-//   return prisma.incident.findMany({
-//     orderBy: {
-//       createdAt: "desc",
-//     },
-//   });
-// };
-
-
-// export const getIncidents = async ({
-//   page,
-//   limit,
-//   search,
-//   severity,
-//   status,
-//   assigneeId,
-//   sortBy,
-//   sortOrder,
-// }: {
-//   page: number;
-//   limit: number;
-//   search?: string;
-//   severity?: "SEV1" | "SEV2" | "SEV3" | "SEV4";
-//   status?:
-//     | "OPEN"
-//     | "INVESTIGATING"
-//     | "MITIGATING"
-//     | "RESOLVING"
-//     | "RESOLVED";
-//   assigneeId?: string;
-//   sortBy:
-//     | "createdAt"
-//     | "updatedAt"
-//     | "title"
-//     | "severity"
-//     | "status";
-//   sortOrder: "asc" | "desc";
-// }) => {
-//   const skip = (page - 1) * limit;
-
-//   const where: Prisma.IncidentWhereInput = {};
-
-//   if (search) {
-//     where.OR = [
-//       {
-//         title: {
-//           contains: search,
-//           mode: "insensitive",
-//         },
-//       },
-//       {
-//         description: {
-//           contains: search,
-//           mode: "insensitive",
-//         },
-//       },
-//     ];
-//   }
-
-//   if (severity) {
-//     where.severity = severity;
-//   }
-
-//   if (status) {
-//     where.status = status;
-//   }
-
-//   if (assigneeId) {
-//     where.assignedToId = assigneeId;
-//   }
-
-//   const [incidents, total] = await prisma.$transaction([
-//     prisma.incident.findMany({
-//       where,
-//       skip,
-//       take: limit,
-
-//       orderBy: {
-//         [sortBy]: sortOrder,
-//       },
-
-//       include: {
-//         assignedTo: {
-//           select: {
-//             id: true,
-//             name: true,
-//             email: true,
-//             role: true,
-//           },
-//         },
-//       },
-//     }),
-
-//     prisma.incident.count({
-//       where,
-//     }),
-//   ]);
-
-//   return {
-//     incidents,
-//     pagination: {
-//       page,
-//       limit,
-//       total,
-//       totalPages: Math.ceil(total / limit),
-//     },
-//   };
-// };
 
 export const getIncidents = async ({
   page = 1,
@@ -298,7 +195,7 @@ export const updateIncident = async (
     severity?: IncidentSeverity;
   }
 ) => {
-  return prisma.$transaction(async (tx) => {
+  const incident = await prisma.$transaction(async (tx) => {
     const incident = await tx.incident.update({
       where: { id },
       data,
@@ -315,6 +212,9 @@ export const updateIncident = async (
 
     return incident;
   });
+
+  publishIncidentUpdated({ incidentId: incident.id, incident, userId });
+  return incident;
 };
 
 
@@ -331,18 +231,20 @@ export const transitionIncidentStatus = async (
   });
 
   if (!incident) {
-    throw new Error("INCIDENT_NOT_FOUND");
+    throw new HttpError(404, "INCIDENT_NOT_FOUND", "Incident not found");
   }
 
   if (incident.status === newStatus) {
-    throw new Error("STATUS_ALREADY_SET");
+    throw new HttpError(409, "STATUS_ALREADY_SET", "Incident already has that status");
   }
 
   const allowed = allowedTransitions[incident.status];
 
   if (!allowed.includes(newStatus)) {
-    throw new Error(
-      `Invalid status transition from ${incident.status} to ${newStatus}`
+    throw new HttpError(
+      409,
+      "INVALID_STATUS_TRANSITION",
+      `Invalid status transition from ${incident.status} to ${newStatus}`,
     );
   }
 
@@ -351,7 +253,7 @@ export const transitionIncidentStatus = async (
       ? new Date()
       : null;
 
-  return prisma.$transaction(async (tx) => {
+  const updatedIncident = await prisma.$transaction(async (tx) => {
     const updatedIncident = await tx.incident.update({
       where: {
         id: incidentId,
@@ -379,6 +281,21 @@ export const transitionIncidentStatus = async (
 
     return updatedIncident;
   });
+
+  const payload = {
+    incidentId,
+    incident: updatedIncident,
+    userId,
+    status: newStatus,
+  };
+
+  if (newStatus === "RESOLVED") {
+    publishIncidentResolved(payload);
+  } else {
+    publishIncidentStatusChanged(payload);
+  }
+
+  return updatedIncident;
 };
 
 
@@ -395,7 +312,7 @@ export const assignIncident = async (
   });
 
   if (!incident) {
-    throw new Error("INCIDENT_NOT_FOUND");
+    throw new HttpError(404, "INCIDENT_NOT_FOUND", "Incident not found");
   }
 
   const user = await prisma.user.findUnique({
@@ -405,10 +322,10 @@ export const assignIncident = async (
   });
 
   if (!user) {
-    throw new Error("USER_NOT_FOUND");
+    throw new HttpError(404, "USER_NOT_FOUND", "User not found");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const updatedIncident = await tx.incident.update({
       where: {
         id: incidentId,
@@ -442,17 +359,42 @@ export const assignIncident = async (
         userId: assignedBy,
       },
     });
-    await createNotification(
+    const notification = await createNotification(
       {
-      type: "INCIDENT_ASSIGNED",
-      message: `Incident assigned to ${user.name}`,
-      userId,
-      incidentId,
-    },
-    tx
-  );
+        type: "INCIDENT_ASSIGNED",
+        message: `Incident assigned to ${user.name}`,
+        userId,
+        incidentId,
+      },
+      tx,
+    );
 
-    return updatedIncident;
+    return { updatedIncident, notification };
   });
-};
 
+  if (isEmailDeliveryEnabled()) {
+    try {
+      await enqueueNotificationEmail({
+        notificationId: result.notification.id,
+        recipientEmail: user.email,
+        recipientName: user.name,
+        subject: "You have been assigned an incident",
+        text: `You have been assigned to incident ${result.updatedIncident.title}.`,
+      });
+    } catch (error) {
+      logger.error(
+        { err: error, incidentId, notificationId: result.notification.id },
+        "Could not enqueue assignment email",
+      );
+    }
+  }
+
+  publishIncidentAssigned({
+    incidentId,
+    incident: result.updatedIncident,
+    userId: assignedBy,
+    assignedToId: userId,
+  });
+
+  return result.updatedIncident;
+};

@@ -26,6 +26,7 @@ import { SeverityBadge } from "@/components/incidents/severity-badge";
 import { StatusBadge } from "@/components/incidents/status-badge";
 import { IncidentFormDialog } from "@/components/incidents/incident-form-dialog";
 import { useIncidents, useUsers } from "@/hooks/incidents/use-incidents";
+import { useCan } from "@/lib/auth/use-can";
 import type {
   IncidentSeverity,
   IncidentSortBy,
@@ -68,6 +69,8 @@ function useDebouncedValue<T>(value: T, delay = 350) {
 }
 
 export default function IncidentsPage() {
+  const { can } = useCan();
+  const canWrite = can(["ADMIN", "RESPONDER"]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -173,10 +176,12 @@ export default function IncidentsPage() {
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">Incidents</h1>
           <p className="mt-1 text-sm text-muted-foreground">Monitor and manage active incidents.</p>
         </div>
-        <Button type="button" onClick={() => updateListParams({ create: "1" })}>
-          <Plus />
-          Create incident
-        </Button>
+        {canWrite && (
+          <Button type="button" onClick={() => updateListParams({ create: "1" })}>
+            <Plus />
+            Create incident
+          </Button>
+        )}
       </header>
 
       <section className="mb-4 rounded-lg border border-border bg-card p-3" aria-label="Incident filters">
@@ -324,12 +329,14 @@ export default function IncidentsPage() {
         </div>
       )}
 
-      <IncidentFormDialog
-        mode="create"
-        open={createOpen}
-        onOpenChange={(open) => updateListParams({ create: open ? "1" : undefined })}
-        onSuccess={() => updateListParams({ page: "1", create: undefined })}
-      />
+      {canWrite && (
+        <IncidentFormDialog
+          mode="create"
+          open={createOpen}
+          onOpenChange={(open) => updateListParams({ create: open ? "1" : undefined })}
+          onSuccess={() => updateListParams({ page: "1", create: undefined })}
+        />
+      )}
     </div>
   );
 }

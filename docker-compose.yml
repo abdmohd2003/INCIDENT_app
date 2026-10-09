@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-incident}
+      POSTGRES_USER: ${POSTGRES_USER:-incident}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-incident-local-only-change-me}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    build:
+      context: ./backend
+      target: build
+    command: ["bunx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:-incident-local-only-change-me}@postgres:5432/${POSTGRES_DB:-incident}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["tools"]
+
+  api:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:-incident-local-only-change-me}@postgres:5432/${POSTGRES_DB:-incident}
+      JWT_SECRET: ${JWT_SECRET:-local-compose-only-secret-change-this-32chars}
+      REDIS_URL: redis://redis:6379
+      REDIS_PREFIX: incident
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
+      TRUST_PROXY: 0
+      LOG_LEVEL: info
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      QUEUE_WORKER_REQUIRED: "true"
+      NOTIFICATION_EMAIL_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - 'fetch("http://127.0.0.1:3000/health/ready").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    build:
+      context: ./backend
+      target: runtime
+    command: ["bun", "dist/workers/notification.worker.js"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:-incident-local-only-change-me}@postgres:5432/${POSTGRES_DB:-incident}
+      JWT_SECRET: ${JWT_SECRET:-local-compose-only-secret-change-this-32chars}
+      REDIS_URL: redis://redis:6379
+      REDIS_PREFIX: incident
+      LOG_LEVEL: info
+      NOTIFICATION_EMAIL_ENABLED: "false"
+      QUEUE_WORKER_CONCURRENCY: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:

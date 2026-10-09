@@ -19,15 +19,36 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { useCreateIncident } from "@/hooks/incidents/use-incidents";
 import type { IncidentSeverity } from "@/api/incidents/types";
+import { useCan } from "@/lib/auth/use-can";
 
 export default function NewIncidentPage() {
   const router = useRouter();
+  const { can } = useCan();
   const mutation = useCreateIncident();
+  const canWrite = can(["ADMIN", "RESPONDER"]);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] =
     useState<IncidentSeverity>("SEV3");
+
+  if (!canWrite) {
+    return (
+      <div className="p-4 sm:p-6">
+        <p role="alert" className="text-sm text-destructive">
+          You do not have permission to create incidents.
+        </p>
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/incidents")}
+          className="mt-4"
+        >
+          <ArrowLeft />
+          Back to incidents
+        </Button>
+      </div>
+    );
+  }
 
   const submit = async () => {
     if (!title.trim()) {

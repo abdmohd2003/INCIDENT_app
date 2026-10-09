@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Toaster } from "sonner";
 
 import { AuthProvider } from "@/lib/auth/auth-context";
+import { AuthenticatedRealtimeProvider } from "@/components/realtime/authenticated-realtime-provider";
 
 type ProvidersProps = {
   children: React.ReactNode;
@@ -32,7 +33,9 @@ export function Providers({ children }: ProvidersProps) {
         enableSystem={false}
       >
         <AuthProvider>
-          {children}
+          <AuthenticatedRealtimeProvider>
+            {children}
+          </AuthenticatedRealtimeProvider>
 
           <Toaster
             position="bottom-right"

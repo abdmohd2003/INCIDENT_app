@@ -1,16 +1,15 @@
-import { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 
 export const getNotificationsController = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ) => {
   try {
-    const userId = (req as any).userId;
-
     const notifications = await prisma.notification.findMany({
       where: {
-        userId,
+        userId: req.user!.id,
       },
       orderBy: {
         createdAt: "desc",
@@ -19,9 +18,6 @@ export const getNotificationsController = async (
 
     res.json(notifications);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: "Failed to fetch notifications",
-    });
+    next(error);
   }
 };

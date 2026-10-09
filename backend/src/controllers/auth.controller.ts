@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import {
   registerUser,
   loginUser,
@@ -6,7 +6,8 @@ import {
 
 export const register = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ) => {
   try {
     const {name, email, password } = req.body;
@@ -14,16 +15,15 @@ export const register = async (
     const result = await registerUser(name,email, password);
 
     return res.status(201).json(result);
-  } catch (error: any) {
-    return res.status(400).json({
-      message: error.message,
-    });
+  } catch (error) {
+    next(error);
   }
 };
 
 export const login = async (
   req: Request,
-  res: Response
+  res: Response,
+  next: NextFunction,
 ) => {
   try {
     const { email, password } = req.body;
@@ -31,9 +31,7 @@ export const login = async (
     const result = await loginUser(email, password);
 
     return res.status(200).json(result);
-  } catch (error: any) {
-    return res.status(401).json({
-      message: error.message,
-    });
+  } catch (error) {
+    next(error);
   }
 };

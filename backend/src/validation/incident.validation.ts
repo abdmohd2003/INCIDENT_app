@@ -1,5 +1,50 @@
 import { z } from "zod";
 
+export const incidentIdParamsSchema = z.object({
+  id: z.string().cuid(),
+});
+
+export const createIncidentBodySchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(10_000).optional(),
+  severity: z.enum(["SEV1", "SEV2", "SEV3", "SEV4"]).optional(),
+});
+
+export const updateIncidentBodySchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().trim().max(10_000).optional(),
+  severity: z.enum(["SEV1", "SEV2", "SEV3", "SEV4"]).optional(),
+}).refine((value) => Object.keys(value).length > 0, {
+  message: "At least one incident field must be provided",
+});
+
+export const incidentStatusBodySchema = z.object({
+  status: z.enum(["OPEN", "INVESTIGATING", "MITIGATING", "RESOLVING", "RESOLVED"]),
+});
+
+export const assignIncidentBodySchema = z.object({
+  userId: z.string().cuid(),
+});
+
+export const commentBodySchema = z.object({
+  content: z.string().trim().min(1).max(5_000),
+});
+
+export const userIdParamsSchema = z.object({
+  id: z.string().cuid(),
+});
+
+export const registerBodySchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  email: z.string().trim().email().max(254),
+  password: z.string().min(8).max(128),
+});
+
+export const loginBodySchema = z.object({
+  email: z.string().trim().email().max(254),
+  password: z.string().min(1).max(128),
+});
+
 const incidentStatuses = [
   "OPEN",
   "INVESTIGATING",

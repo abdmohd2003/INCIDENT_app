@@ -2,8 +2,17 @@
 
 import { Router } from "express";
 import { authenticate } from "../middleware/auth.middleware.js";
+import { authorize } from "../middleware/role.middleware.js";
 import { validateQuery } from "../middleware/validate.middleware.js";
-import { getIncidentsQuerySchema } from "../validation/incident.validation.js";
+import { validateBody, validateParams } from "../middleware/validate.middleware.js";
+import {
+  assignIncidentBodySchema,
+  createIncidentBodySchema,
+  getIncidentsQuerySchema,
+  incidentIdParamsSchema,
+  incidentStatusBodySchema,
+  updateIncidentBodySchema,
+} from "../validation/incident.validation.js";
 import { getIncidentEventsController } from "../controllers/timeline.controller.js";
 import { getDashboardStatsController } from "../controllers/dashboard.controller.js";
 
@@ -20,13 +29,36 @@ const router = Router();
 
 router.use(authenticate);
 
-router.post("/", createIncidentController);
+router.post(
+  "/",
+  authorize("ADMIN", "RESPONDER"),
+  validateBody(createIncidentBodySchema),
+  createIncidentController,
+);
 router.get("/", validateQuery(getIncidentsQuerySchema), getIncidentsController);
 router.get("/stats", getDashboardStatsController);
-router.get("/:id/events", getIncidentEventsController);
-router.get("/:id", getIncidentByIdController);
-router.put("/:id", updateIncidentController);
-router.patch("/:id/status",authenticate,changeIncedentStatus);
-router.patch("/:id/assign",assignIncedentController);
+router.get("/:id/events", validateParams(incidentIdParamsSchema), getIncidentEventsController);
+router.get("/:id", validateParams(incidentIdParamsSchema), getIncidentByIdController);
+router.put(
+  "/:id",
+  authorize("ADMIN", "RESPONDER"),
+  validateParams(incidentIdParamsSchema),
+  validateBody(updateIncidentBodySchema),
+  updateIncidentController,
+);
+router.patch(
+  "/:id/status",
+  authorize("ADMIN", "RESPONDER"),
+  validateParams(incidentIdParamsSchema),
+  validateBody(incidentStatusBodySchema),
+  changeIncedentStatus,
+);
+router.patch(
+  "/:id/assign",
+  authorize("ADMIN", "RESPONDER"),
+  validateParams(incidentIdParamsSchema),
+  validateBody(assignIncidentBodySchema),
+  assignIncedentController,
+);
 
 export default router;

@@ -8,6 +8,7 @@ import {
     assignIncident
 
 } from "../services/incident.service.js";
+import { HttpError } from "../lib/http-error.js";
 
 export const createIncidentController = async (
     req:Request,
@@ -54,6 +55,9 @@ export const getIncidentByIdController = async (
     const id = String(req.params.id);
 
     const incident = await getIncidentById(id);
+    if (!incident) {
+      throw new HttpError(404, "INCIDENT_NOT_FOUND", "Incident not found");
+    }
 
     res.json(incident);
   } catch (error) {
@@ -83,17 +87,11 @@ export const updateIncidentController = async(
 
 export const changeIncedentStatus = async (
     req: Request,
-    res:Response
+    res:Response,
+    next: NextFunction,
 ) =>{
     try{
         const { status } = req.body;
-        
-        if (!status){
-            return res.status(400).json({
-                message:"status is required",
-
-            });
-        }
         const incident = await transitionIncidentStatus(
             String(req.params.id),
             status,
@@ -104,23 +102,8 @@ export const changeIncedentStatus = async (
             incident
         });
 
-    } catch (error:any){
-        console.log(error);
-
-        if(error.message ===   "INCEDENT_NOT_FOUND"){
-            return res.status(404).json({
-                message:"Incident not found"
-            });
-        }
-
-        if (error.message === "STATUS_ALREADY_SET" || error.message.includes("Invalid status transition")){
-            return res.status(400).json({
-                message:error.message,
-            });
-        }
-        return res.status(500).json({
-            message: "Failed to update incident status"
-        });
+    } catch (error){
+        next(error);
     }
 
 };
@@ -128,17 +111,12 @@ export const changeIncedentStatus = async (
 
 export const assignIncedentController = async(
     req: Request,
-    res: Response
+    res: Response,
+    next: NextFunction,
 
 ) =>{
     try {
         const {userId} = req.body;
-
-        if(!userId){
-            return res.status(400).json({
-                message:"user id is required",
-            });
-        }
 
         const incident = await assignIncident(
             String(req.params.id),
@@ -149,23 +127,7 @@ export const assignIncedentController = async(
             message: "Incident assigned successfully",
             incident
         });
-    } catch (error:any){
-        console.error(error);
-
-        if(error.message === "INCIDENT_NOT_FOUND"){
-            return res.status(404).json({
-                message: "Incident not found",
-            });
-        }
-
-        if(error.message === "USER_NOT_FOUND"){
-            return res.status(404).json({
-                message:"User not found"
-            });
-
-        }
-        return res.status(500).json({
-            message: "Failed to assign Incident"
-        });
+    } catch (error){
+        next(error);
     }
 };
