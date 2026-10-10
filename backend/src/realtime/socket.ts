@@ -1,6 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
-import jwt, { type JwtPayload } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 
 import { env, isAllowedOrigin } from "../config/env.js";
 import { logger } from "../lib/logger.js";

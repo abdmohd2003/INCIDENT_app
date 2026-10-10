@@ -4,7 +4,11 @@ import {
 } from "@/lib/auth/session";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api/v1";
+  typeof window === "undefined"
+    ? process.env.API_INTERNAL_URL ??
+      process.env.NEXT_PUBLIC_API_URL ??
+      "http://localhost:3000/api/v1"
+    : process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api/v1";
 
 type ApiRequestOptions = RequestInit & {
   skipAuth?: boolean;

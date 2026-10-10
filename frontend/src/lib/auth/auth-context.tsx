@@ -62,6 +62,8 @@ export function AuthProvider({
   useEffect(() => {
     const storedSession = getStoredSession();
 
+    // Restore browser-only storage after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSession(storedSession);
     setIsLoading(false);
   }, []);

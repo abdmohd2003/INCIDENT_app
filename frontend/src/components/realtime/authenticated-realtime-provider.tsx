@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 
 import { useAuth } from "@/lib/auth/auth-context";
-import { useRealtimeIncidents } from "@/lib/realtime/use-realtime-incidents";
+import { RealtimeProvider } from "./realtime-provider";
 
 export function AuthenticatedRealtimeProvider({
   children,
@@ -11,6 +11,10 @@ export function AuthenticatedRealtimeProvider({
   children: ReactNode;
 }) {
   const { token } = useAuth();
-  useRealtimeIncidents(token);
-  return children;
+
+  return (
+    <RealtimeProvider token={token}>
+      {children}
+    </RealtimeProvider>
+  );
 }

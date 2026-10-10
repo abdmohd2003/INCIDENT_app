@@ -24,7 +24,7 @@ type NotificationType =
   | "INCIDENT_ASSIGNED"
   | "INCIDENT_STATUS_CHANGED"
   | "INCIDENT_COMMENT_ADDED"
-  | "INCIDENT_UPDATED";  
+  | "INCIDENT_UPDATED";
 
 const allowedTransitions: Record<
   IncidentStatus,
@@ -37,7 +37,6 @@ const allowedTransitions: Record<
   RESOLVED: [],
 };
 
-
 // CREATE INCIDENT
 export const createIncident = async (
   userId: string,
@@ -45,7 +44,7 @@ export const createIncident = async (
     title: string;
     description?: string;
     severity?: IncidentSeverity;
-  }
+  },
 ) => {
   const incident = await prisma.$transaction(async (tx) => {
     const incident = await tx.incident.create({
@@ -53,7 +52,11 @@ export const createIncident = async (
         title: data.title,
         description: data.description,
         severity: data.severity,
-        createdBy: { connect: { id: userId } },
+        createdBy: {
+          connect: {
+            id: userId,
+          },
+        },
       },
     });
 
@@ -184,7 +187,6 @@ export const getIncidentById = async (id: string) => {
   });
 };
 
-
 // UPDATE INCIDENT
 export const updateIncident = async (
   id: string,
@@ -193,7 +195,7 @@ export const updateIncident = async (
     title?: string;
     description?: string;
     severity?: IncidentSeverity;
-  }
+  },
 ) => {
   const incident = await prisma.$transaction(async (tx) => {
     const incident = await tx.incident.update({
@@ -217,12 +219,11 @@ export const updateIncident = async (
   return incident;
 };
 
-
 // CHANGE INCIDENT STATUS
 export const transitionIncidentStatus = async (
   incidentId: string,
   newStatus: IncidentStatus,
-  userId: string
+  userId: string,
 ) => {
   const incident = await prisma.incident.findUnique({
     where: {
@@ -266,15 +267,9 @@ export const transitionIncidentStatus = async (
 
     await tx.incidentEvent.create({
       data: {
-        type:
-          newStatus === "RESOLVED"
-            ? "RESOLVED"
-            : "STATUS_CHANGED",
-
+        type: newStatus === "RESOLVED" ? "RESOLVED" : "STATUS_CHANGED",
         message: `Status changed from ${incident.status} to ${newStatus}`,
-
         incidentId,
-
         userId,
       },
     });
@@ -298,12 +293,11 @@ export const transitionIncidentStatus = async (
   return updatedIncident;
 };
 
-
 // ASSIGN INCIDENT
 export const assignIncident = async (
   incidentId: string,
   userId: string,
-  assignedBy: string
+  assignedBy: string,
 ) => {
   const incident = await prisma.incident.findUnique({
     where: {
@@ -338,7 +332,6 @@ export const assignIncident = async (
           },
         },
       },
-
       include: {
         assignedTo: {
           select: {

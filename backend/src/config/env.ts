@@ -19,7 +19,10 @@ const envSchema = z.object({
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   METRICS_TOKEN: z.string().optional(),
-  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_DSN: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().url().optional(),
+  ),
   SENTRY_ENVIRONMENT: z.string().trim().min(1).optional(),
   RATE_LIMIT_POINTS: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_DURATION: z.coerce.number().int().positive().default(60),

@@ -1,10 +1,11 @@
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-incident}
       POSTGRES_USER: ${POSTGRES_USER:-incident}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-incident-local-only-change-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env and set POSTGRES_PASSWORD}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
@@ -14,9 +15,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 15
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6380}:6379"
@@ -32,31 +35,93 @@ services:
     build:
       context: ./backend
       target: build
+    restart: "no"
     command: ["bunx", "prisma", "migrate", "deploy"]
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:-incident-local-only-change-me}@postgres:5432/${POSTGRES_DB:-incident}
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-incident}
     depends_on:
       postgres:
         condition: service_healthy
-    profiles: ["tools"]
+
+  worker:
+    build:
+      context: ./backend
+      target: runtime
+    restart: unless-stopped
+    command: ["bun", "dist/workers/notification.worker.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-incident}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      REDIS_URL: redis://redis:6379
+      REDIS_PREFIX: ${REDIS_PREFIX:-incident}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_TOKEN: ${METRICS_TOKEN:?Set METRICS_TOKEN in .env}
+      NOTIFICATION_EMAIL_ENABLED: ${NOTIFICATION_EMAIL_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      QUEUE_WORKER_CONCURRENCY: ${QUEUE_WORKER_CONCURRENCY:-5}
+      QUEUE_JOB_ATTEMPTS: ${QUEUE_JOB_ATTEMPTS:-3}
+      QUEUE_BACKOFF_MS: ${QUEUE_BACKOFF_MS:-2000}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - >-
+          import Redis from "ioredis";
+          const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 1, retryStrategy: () => null });
+          redis.get(process.env.REDIS_PREFIX + ":health:notification-worker")
+            .then((value) => redis.quit().then(() => process.exit(value === "1" ? 0 : 1)))
+            .catch(() => process.exit(1));
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   api:
     build:
       context: ./backend
       target: runtime
+    restart: unless-stopped
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:-incident-local-only-change-me}@postgres:5432/${POSTGRES_DB:-incident}
-      JWT_SECRET: ${JWT_SECRET:-local-compose-only-secret-change-this-32chars}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-incident}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       REDIS_URL: redis://redis:6379
-      REDIS_PREFIX: incident
+      REDIS_PREFIX: ${REDIS_PREFIX:-incident}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
-      TRUST_PROXY: 0
-      LOG_LEVEL: info
-      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      METRICS_TOKEN: ${METRICS_TOKEN:?Set METRICS_TOKEN in .env}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      RATE_LIMIT_POINTS: ${RATE_LIMIT_POINTS:-120}
+      RATE_LIMIT_DURATION: ${RATE_LIMIT_DURATION:-60}
+      LOGIN_RATE_LIMIT_POINTS: ${LOGIN_RATE_LIMIT_POINTS:-5}
+      LOGIN_RATE_LIMIT_DURATION: ${LOGIN_RATE_LIMIT_DURATION:-60}
+      LOGIN_RATE_LIMIT_BLOCK_DURATION: ${LOGIN_RATE_LIMIT_BLOCK_DURATION:-900}
+      QUEUE_JOB_ATTEMPTS: ${QUEUE_JOB_ATTEMPTS:-3}
+      QUEUE_BACKOFF_MS: ${QUEUE_BACKOFF_MS:-2000}
       QUEUE_WORKER_REQUIRED: "true"
-      NOTIFICATION_EMAIL_ENABLED: "false"
+      QUEUE_WORKER_CONCURRENCY: ${QUEUE_WORKER_CONCURRENCY:-5}
+      NOTIFICATION_EMAIL_ENABLED: ${NOTIFICATION_EMAIL_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"
     depends_on:
@@ -64,38 +129,54 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       worker:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test:
         - CMD
         - bun
         - -e
-        - 'fetch("http://127.0.0.1:3000/health/ready").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
+        - >-
+          fetch("http://127.0.0.1:3000/health/ready")
+            .then((response) => process.exit(response.ok ? 0 : 1))
+            .catch(() => process.exit(1));
       interval: 10s
-      timeout: 4s
+      timeout: 5s
       retries: 12
       start_period: 20s
 
-  worker:
+  frontend:
     build:
-      context: ./backend
-      target: runtime
-    command: ["bun", "dist/workers/notification.worker.js"]
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+        NEXT_PUBLIC_REALTIME_ENABLED: ${NEXT_PUBLIC_REALTIME_ENABLED:-true}
+    restart: unless-stopped
     environment:
-      NODE_ENV: development
-      DATABASE_URL: postgresql://${POSTGRES_USER:-incident}:${POSTGRES_PASSWORD:-incident-local-only-change-me}@postgres:5432/${POSTGRES_DB:-incident}
-      JWT_SECRET: ${JWT_SECRET:-local-compose-only-secret-change-this-32chars}
-      REDIS_URL: redis://redis:6379
-      REDIS_PREFIX: incident
-      LOG_LEVEL: info
-      NOTIFICATION_EMAIL_ENABLED: "false"
-      QUEUE_WORKER_CONCURRENCY: 5
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+      API_INTERNAL_URL: http://api:3000/api/v1
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3001}:3001"
     depends_on:
-      postgres:
+      api:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - >-
+          fetch("http://127.0.0.1:3001/")
+            .then((response) => process.exit(response.ok ? 0 : 1))
+            .catch(() => process.exit(1));
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 volumes:
   postgres-data:
